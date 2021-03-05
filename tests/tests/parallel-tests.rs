@@ -307,7 +307,7 @@ mod helpers {
         format!(
             "postgresql://{user}:{password}@{host}:{port}/{database_name}",
             user = "postgres",
-            password = "postgres",
+            password = "password",
             host = "localhost",
             port = port,
             database_name = format!("test_database_{}", unique_id),
@@ -328,11 +328,7 @@ mod helpers {
             .0
             .get(&GANACHE_DEFAULT_PORT)
             .expect("failed to fetch Ganache port from mapped ports");
-        let uri = format!(
-            "test://http://{host}:{port}",
-            host = "localhost",
-            port = port
-        );
+        let uri = format!("test:http://{host}:{port}", host = "localhost", port = port);
         (port.clone(), uri)
     }
 
