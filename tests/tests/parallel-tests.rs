@@ -337,17 +337,33 @@ mod helpers {
         string
     }
 
-    /// Returns five available port numbers, using dynamic port ranges
-    pub fn get_five_ports() -> [u16; 5] {
-        let mut ports = [0u16; 5];
-        for port in ports.iter_mut() {
-            let min = get_unique_port_number();
-            let max = min + 1_000;
-            let free_port_in_range = port_check::free_local_port_in_range(min, max)
-                .expect("failed to obtain a free port in range");
-            *port = free_port_in_range;
+    #[derive(Debug)]
+    pub struct GraphNodePorts {
+        pub http: u16,
+        pub index: u16,
+        pub ws: u16,
+        pub admin: u16,
+        pub metrics: u16,
+    }
+    impl GraphNodePorts {
+        /// Returns five available port numbers, using dynamic port ranges
+        pub fn get_ports() -> GraphNodePorts {
+            let mut ports = [0u16; 5];
+            for port in ports.iter_mut() {
+                let min = get_unique_port_number();
+                let max = min + 1_000;
+                let free_port_in_range = port_check::free_local_port_in_range(min, max)
+                    .expect("failed to obtain a free port in range");
+                *port = free_port_in_range;
+            }
+            GraphNodePorts {
+                http: ports[0],
+                index: ports[1],
+                ws: ports[2],
+                admin: ports[3],
+                metrics: ports[4],
+            }
         }
-        ports
     }
 
     // Build a postgres connection string
@@ -396,9 +412,9 @@ mod helpers {
 mod integration_testing {
     use super::docker::{DockerTestClient, MappedPorts, TestContainerService};
     use super::helpers::{
-        basename, discover_test_directories, get_five_ports, get_unique_ganache_counter,
+        basename, discover_test_directories, get_unique_ganache_counter,
         get_unique_postgres_counter, make_ganache_uri, make_ipfs_uri, make_postgres_uri,
-        pretty_output,
+        pretty_output, GraphNodePorts,
     };
     use futures::{stream::futures_unordered::FuturesUnordered, StreamExt};
     use std::fs;
@@ -414,7 +430,7 @@ mod integration_testing {
         ipfs_uri: String,
         ganache_port: u16,
         ganache_uri: String,
-        graph_node_ports: [u16; 5],
+        graph_node_ports: GraphNodePorts,
         graph_node_bin: Arc<PathBuf>,
         test_directory: PathBuf,
     }
@@ -425,7 +441,7 @@ mod integration_testing {
         }
 
         fn graph_node_uri(&self) -> String {
-            let ws_port = self.graph_node_ports[2];
+            let ws_port = self.graph_node_ports.ws;
             format!("http://localhost:{}/", ws_port)
         }
     }
@@ -442,7 +458,7 @@ mod integration_testing {
     #[derive(Debug)]
     struct StdIO {
         stdout: Option<String>,
-        stderr: Option<String>
+        stderr: Option<String>,
     }
     impl std::fmt::Display for StdIO {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -638,7 +654,7 @@ mod integration_testing {
             ganache_uri,
             ganache_port,
             graph_node_bin,
-            graph_node_ports: get_five_ports(),
+            graph_node_ports: GraphNodePorts::get_ports(),
             test_directory,
         };
 
@@ -691,6 +707,7 @@ mod integration_testing {
     async fn run_graph_node(test_setup: &IntegrationTestSetup) -> Child {
         use std::process::Stdio;
         Command::new(&*test_setup.graph_node_bin)
+            .env("RUST_LOG", "debug")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // postgres
@@ -704,19 +721,19 @@ mod integration_testing {
             .arg(&test_setup.ipfs_uri)
             // http port
             .arg("--http-port")
-            .arg(test_setup.graph_node_ports[0].to_string())
+            .arg(test_setup.graph_node_ports.http.to_string())
             // index node port
             .arg("--index-node-port")
-            .arg(test_setup.graph_node_ports[1].to_string())
+            .arg(test_setup.graph_node_ports.index.to_string())
             // ws  port
             .arg("--ws-port")
-            .arg(test_setup.graph_node_ports[2].to_string())
+            .arg(test_setup.graph_node_ports.ws.to_string())
             // admin  port
             .arg("--admin-port")
-            .arg(test_setup.graph_node_ports[3].to_string())
+            .arg(test_setup.graph_node_ports.admin.to_string())
             // metrics  port
             .arg("--metrics-port")
-            .arg(test_setup.graph_node_ports[4].to_string())
+            .arg(test_setup.graph_node_ports.metrics.to_string())
             .spawn()
             .expect("failed to start graph-node command.")
     }
