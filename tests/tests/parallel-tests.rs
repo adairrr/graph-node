@@ -289,11 +289,15 @@ mod helpers {
         string
     }
 
-    /// Returns five available port numbers
+    /// Returns five available port numbers, using dynamic port ranges
     pub fn get_five_ports() -> [u16; 5] {
-        let mut ports = [0_u16; 5];
+        let mut ports = [0u16; 5];
         for port in ports.iter_mut() {
-            *port = get_port::get_port().expect("failed to obtain a free port")
+            let min = get_unique_port_number();
+            let max = min + 1_000;
+            let free_port_in_range = port_check::free_local_port_in_range(min, max)
+                .expect("failed to obtain a free port in range");
+            *port = free_port_in_range;
         }
         ports
     }

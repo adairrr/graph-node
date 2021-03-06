@@ -1542,12 +1542,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "get-port"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac6c41a39c60ae1fc5bf0e220347ce90fa1e4bb0fcdac65b09bb5f4576bebc84"
-
-[[package]]
 name = "getrandom"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1948,8 +1942,8 @@ dependencies = [
  "duct",
  "fail",
  "futures 0.3.13",
- "get-port",
  "lazy_static",
+ "port_check",
  "tokio 1.2.0",
  "tokio-stream",
 ]
@@ -3254,6 +3248,12 @@ name = "pkg-config"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
+
+[[package]]
+name = "port_check"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6519412c9e0d4be579b9f0618364d19cb434b324fc6ddb1b27b1e682c7105ed"
 
 [[package]]
 name = "postgres"
