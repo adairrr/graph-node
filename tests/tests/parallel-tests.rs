@@ -59,7 +59,12 @@ mod docker {
                 image: Some(POSTGRES_IMAGE),
                 env: Some(vec!["POSTGRES_PASSWORD=password", "POSTGRES_USER=postgres"]),
                 host_config: Some(host_config),
-                cmd: Some(vec!["postgres", "-N", "1000"]),
+                cmd: Some(vec![
+                    "postgres",
+                    "-N",
+                    "1000",
+                    "-cshared_preload_libraries=pg_stat_statements",
+                ]),
                 ..Default::default()
             }
         }
