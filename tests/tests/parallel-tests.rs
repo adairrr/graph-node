@@ -399,6 +399,7 @@ mod integration_testing {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use tokio::io::AsyncReadExt;
     use tokio::process::{Child, Command};
 
     /// Contains all information a test command needs
@@ -428,11 +429,49 @@ mod integration_testing {
         stderr: String,
     }
 
+    #[derive(Debug)]
+    struct StdIO {
+        stdout: String,
+        stderr: String,
+    }
+
     // The results of a finished integration test
     #[derive(Debug)]
     struct IntegrationTestResult {
         test_setup: IntegrationTestSetup,
-        command_results: TestCommandResults,
+        test_command_results: TestCommandResults,
+        graph_node_stdio: StdIO,
+    }
+
+    impl IntegrationTestResult {
+        fn print_outcome(&self) {
+            let status = match self.test_command_results.success {
+                true => "SUCCESS",
+                false => "FAILURE",
+            };
+            println!("- Test: {}: {}", status, self.test_setup.test_name())
+        }
+
+        fn print_failure(&self) {
+            if self.test_command_results.success {
+                return;
+            }
+            let test_name = self.test_setup.test_name();
+            println!("=============");
+            println!("\nFailed test: {}", test_name);
+            println!("-------------");
+            println!("{:#?}", self.test_setup);
+            println!("-------------");
+            println!("\nFailed test command output:");
+            println!("---------------------------");
+            println!("{}", self.test_command_results.stdout);
+            println!("{}", self.test_command_results.stderr);
+            println!("-------------");
+            println!("graph-node command output:");
+            println!("--------------------------");
+            println!("{}", self.graph_node_stdio.stdout);
+            println!("{}", self.graph_node_stdio.stderr);
+        }
     }
 
     /// The main test entrypoint
@@ -504,7 +543,7 @@ mod integration_testing {
         }
         while let Some(test_result) = tests_futures.next().await {
             let test_result = test_result.expect("failed to await for test future.");
-            if !test_result.command_results.success {
+            if !test_result.test_command_results.success {
                 exit_code = 101;
             }
             test_results.push(test_result);
@@ -522,7 +561,14 @@ mod integration_testing {
         // print test results
         println!("\nTest results:");
         for test_result in &test_results {
-            println!("- {:?}", test_result)
+            test_result.print_outcome()
+        }
+        // print failures
+        for failed_test in test_results
+            .iter()
+            .filter(|t| !t.test_command_results.success)
+        {
+            failed_test.print_failure()
         }
 
         std::process::exit(exit_code)
@@ -579,13 +625,11 @@ mod integration_testing {
         let mut graph_node_child_command = run_graph_node(&test_setup).await;
 
         println!("Test started: {}", basename(&test_setup.test_directory));
-        let command_results = run_test_command(&test_setup).await;
+        let test_command_results = run_test_command(&test_setup).await;
 
         // stop graph-node
-        graph_node_child_command
-            .kill()
-            .await
-            .expect("Failed to kill graph-node");
+
+        let graph_node_stdio = stop_graph_node(&mut graph_node_child_command).await;
 
         // stop ganache container
         ganache
@@ -595,7 +639,8 @@ mod integration_testing {
 
         IntegrationTestResult {
             test_setup,
-            command_results,
+            test_command_results,
+            graph_node_stdio,
         }
     }
 
@@ -610,8 +655,8 @@ mod integration_testing {
             .expect("failed to run test command");
 
         let test_name = test_setup.test_name();
-        let stdout_tag = format!("[{}:stdout]", test_name);
-        let stderr_tag = format!("[{}:stderr]", test_name);
+        let stdout_tag = format!("[{}:stdout] ", test_name);
+        let stderr_tag = format!("[{}:stderr] ", test_name);
 
         TestCommandResults {
             success: output.status.success(),
@@ -623,7 +668,8 @@ mod integration_testing {
     async fn run_graph_node(test_setup: &IntegrationTestSetup) -> Child {
         use std::process::Stdio;
         Command::new(&*test_setup.graph_node_bin)
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
+            .stdout(Stdio::piped())
             // postgres
             .arg("--postgres-url")
             .arg(&test_setup.postgres_uri)
@@ -650,5 +696,30 @@ mod integration_testing {
             .arg(test_setup.graph_node_ports[4].to_string())
             .spawn()
             .expect("failed to start graph-node command.")
+    }
+
+    async fn stop_graph_node(child: &mut Child) -> StdIO {
+        child.kill().await.expect("Failed to kill graph-node");
+
+        // capture stdio
+        let stdout = match child.stdout.take() {
+            Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stdout] ").await),
+            None => None,
+        };
+        let stderr = match child.stderr.take() {
+            Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stderr] ").await),
+            None => None,
+        };
+
+        StdIO {
+            stdout: stdout.unwrap_or(String::new()),
+            stderr: stderr.unwrap_or(String::new()),
+        }
+    }
+
+    async fn process_stdio<T: AsyncReadExt + Unpin>(stdio: &mut T, prefix: &str) -> String {
+        let mut buffer: Vec<u8> = Vec::new();
+        stdio.read(&mut buffer).await.expect("failed to read");
+        pretty_output(&buffer, prefix)
     }
 }
