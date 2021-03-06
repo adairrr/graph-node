@@ -436,8 +436,19 @@ mod integration_testing {
 
     #[derive(Debug)]
     struct StdIO {
-        stdout: String,
-        stderr: String,
+        stdout: Option<String>,
+        stderr: Option<String>
+    }
+    impl std::fmt::Display for StdIO {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if let Some(ref stdout) = self.stdout {
+                write!(f, "{}", stdout)?;
+            }
+            if let Some(ref stderr) = self.stderr {
+                write!(f, "{}", stderr)?
+            }
+            Ok(())
+        }
     }
 
     // The results of a finished integration test
@@ -471,11 +482,10 @@ mod integration_testing {
             println!("---------------------------");
             println!("{}", self.test_command_results.stdout);
             println!("{}", self.test_command_results.stderr);
-            println!("-------------");
+            println!("--------------------------");
             println!("graph-node command output:");
             println!("--------------------------");
-            println!("{}", self.graph_node_stdio.stdout);
-            println!("{}", self.graph_node_stdio.stderr);
+            println!("{}", self.graph_node_stdio);
         }
     }
 
@@ -717,15 +727,15 @@ mod integration_testing {
             None => None,
         };
 
-        StdIO {
-            stdout: stdout.unwrap_or(String::new()),
-            stderr: stderr.unwrap_or(String::new()),
-        }
+        StdIO { stdout, stderr }
     }
 
     async fn process_stdio<T: AsyncReadExt + Unpin>(stdio: &mut T, prefix: &str) -> String {
         let mut buffer: Vec<u8> = Vec::new();
-        stdio.read(&mut buffer).await.expect("failed to read");
+        stdio
+            .read_to_end(&mut buffer)
+            .await
+            .expect("failed to read");
         pretty_output(&buffer, prefix)
     }
 }
