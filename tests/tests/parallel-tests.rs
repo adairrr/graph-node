@@ -558,17 +558,18 @@ mod integration_testing {
             .await
             .expect("failed to stop container service for IPFS");
 
-        // print test results
-        println!("\nTest results:");
-        for test_result in &test_results {
-            test_result.print_outcome()
-        }
         // print failures
         for failed_test in test_results
             .iter()
             .filter(|t| !t.test_command_results.success)
         {
             failed_test.print_failure()
+        }
+
+        // print test result summary
+        println!("\nTest results:");
+        for test_result in &test_results {
+            test_result.print_outcome()
         }
 
         std::process::exit(exit_code)
