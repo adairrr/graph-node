@@ -1,5 +1,5 @@
 mod docker {
-    use super::helpers::contains_subslice;
+    use super::helpers::{contains_subslice, postgres_test_database_name};
     use bollard::models::HostConfig;
     use bollard::{container, Docker};
     use std::collections::HashMap;
@@ -59,6 +59,7 @@ mod docker {
                 image: Some(POSTGRES_IMAGE),
                 env: Some(vec!["POSTGRES_PASSWORD=password", "POSTGRES_USER=postgres"]),
                 host_config: Some(host_config),
+                cmd: Some(vec!["postgres", "-N", "1000"]),
                 ..Default::default()
             }
         }
@@ -182,6 +183,41 @@ mod docker {
                     }
                     _ => {}
                 }
+            }
+        }
+
+        /// Calls `docker exec` on the container to create a test database.
+        pub async fn create_postgres_database(
+            docker: &DockerTestClient,
+            unique_id: &u16,
+        ) -> Result<(), DockerError> {
+            use bollard::exec;
+
+            let database_name = postgres_test_database_name(unique_id);
+
+            // 1. Create Exec
+            let config = exec::CreateExecOptions {
+                cmd: Some(vec!["createdb", &database_name]),
+                user: Some("postgres"),
+                attach_stdout: Some(true),
+                ..Default::default()
+            };
+
+            let message = docker
+                .client
+                .create_exec(&docker.service.name(), config)
+                .await?;
+
+            // 2. Start Exec
+            let mut stream = docker.client.start_exec(&message.id, None);
+            while let Some(_) = stream.next().await { /* consume stream */ }
+
+            // 3. Inspecet exec
+            let inspect = docker.client.inspect_exec(&message.id).await?;
+            if let Some(0) = inspect.exit_code {
+                Ok(())
+            } else {
+                panic!("failed to run 'createdb' command using docker exec");
             }
         }
     }
@@ -321,7 +357,7 @@ mod helpers {
             password = "password",
             host = "localhost",
             port = port,
-            database_name = format!("test_database_{}", unique_id),
+            database_name = postgres_test_database_name(unique_id),
         )
     }
 
@@ -345,6 +381,10 @@ mod helpers {
 
     pub fn contains_subslice<T: PartialEq>(data: &[T], needle: &[T]) -> bool {
         data.windows(needle.len()).any(|w| w == needle)
+    }
+
+    pub fn postgres_test_database_name(unique_id: &u16) -> String {
+        format!("test_database_{}", unique_id)
     }
 }
 
@@ -415,9 +455,11 @@ mod integration_testing {
         }
 
         // start docker containers for Postgres and IPFS and wait for them to be ready
-        let postgres = DockerTestClient::start(TestContainerService::Postgres)
-            .await
-            .expect("failed to start container service for Postgres.");
+        let postgres = Arc::new(
+            DockerTestClient::start(TestContainerService::Postgres)
+                .await
+                .expect("failed to start container service for Postgres."),
+        );
         postgres
             .wait_for_message(b"database system is ready to accept connections")
             .await
@@ -454,6 +496,7 @@ mod integration_testing {
         for dir in integration_tests_directories.into_iter() {
             tests_futures.push(tokio::spawn(run_integration_test(
                 dir,
+                postgres.clone(),
                 postgres_ports.clone(),
                 ipfs_ports.clone(),
                 graph_node.clone(),
@@ -488,6 +531,7 @@ mod integration_testing {
     /// Prepare and run the integration test
     async fn run_integration_test(
         test_directory: PathBuf,
+        postgres_docker: Arc<DockerTestClient>,
         postgres_ports: Arc<MappedPorts>,
         ipfs_ports: Arc<MappedPorts>,
         graph_node_bin: Arc<PathBuf>,
@@ -508,12 +552,17 @@ mod integration_testing {
             .await
             .expect("failed to obtain exposed ports for Ganache container");
 
-        // discover programs paths
-
         // build URIs
-        let postgres_uri = make_postgres_uri(get_unique_postgres_counter(), &postgres_ports);
+        let postgres_unique_id = get_unique_postgres_counter();
+
+        let postgres_uri = make_postgres_uri(&postgres_unique_id, &postgres_ports);
         let ipfs_uri = make_ipfs_uri(&ipfs_ports);
         let (ganache_port, ganache_uri) = make_ganache_uri(&ganache_ports);
+
+        // create test database
+        DockerTestClient::create_postgres_database(&postgres_docker, &postgres_unique_id)
+            .await
+            .expect("failed to create the test database.");
 
         // prepare to run test comand
         let test_setup = IntegrationTestSetup {
