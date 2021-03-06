@@ -21,7 +21,7 @@ mod docker {
     pub enum TestContainerService {
         Postgres,
         Ipfs,
-        Ganache(u32),
+        Ganache(u16),
     }
 
     impl TestContainerService {
@@ -219,12 +219,15 @@ mod helpers {
     use std::fs;
     use std::io::{self, BufRead};
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU16, Ordering};
 
     /// A counter for uniquely naming Ganache containers
-    static GANACHE_CONTAINER_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static GANACHE_CONTAINER_COUNT: AtomicU16 = AtomicU16::new(0);
     /// A counter for uniquely naming Postgres databases
-    static POSTGRES_DATABASE_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static POSTGRES_DATABASE_COUNT: AtomicU16 = AtomicU16::new(0);
+    /// A counter for uniquely assigning ports.
+    static PORT_NUMBER_COUNTER: AtomicU16 = AtomicU16::new(10_000);
+
     const POSTGRESQL_DEFAULT_PORT: u16 = 5432;
     const GANACHE_DEFAULT_PORT: u16 = 8545;
     const IPFS_DEFAULT_PORT: u16 = 5001;
@@ -256,17 +259,21 @@ mod helpers {
     }
 
     /// Fetches a unique number for naming Ganache containers
-    pub fn get_unique_ganache_counter() -> u32 {
+    pub fn get_unique_ganache_counter() -> u16 {
         increase_atomic_counter(&GANACHE_CONTAINER_COUNT)
     }
     /// Fetches a unique number for naming Postgres databases
-    pub fn get_unique_postgres_counter() -> u32 {
+    pub fn get_unique_postgres_counter() -> u16 {
         increase_atomic_counter(&POSTGRES_DATABASE_COUNT)
     }
+    /// Fetches a unique port number
+    pub fn get_unique_port_number() -> u16 {
+        increase_atomic_counter(&PORT_NUMBER_COUNTER)
+    }
 
-    fn increase_atomic_counter(counter: &'static AtomicUsize) -> u32 {
+    fn increase_atomic_counter(counter: &'static AtomicU16) -> u16 {
         let old_count = counter.fetch_add(1, Ordering::SeqCst);
-        old_count as u32 + 1
+        old_count + 1
     }
 
     /// Parses stdio bytes into a prefixed String
@@ -303,7 +310,7 @@ mod helpers {
     }
 
     // Build a postgres connection string
-    pub fn make_postgres_uri(unique_id: u32, postgres_ports: &MappedPorts) -> String {
+    pub fn make_postgres_uri(unique_id: &u16, postgres_ports: &MappedPorts) -> String {
         let port = postgres_ports
             .0
             .get(&POSTGRESQL_DEFAULT_PORT)
