@@ -675,7 +675,7 @@ mod integration_testing {
         use std::process::Stdio;
         Command::new(&*test_setup.graph_node_bin)
             .stdout(Stdio::piped())
-            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             // postgres
             .arg("--postgres-url")
             .arg(&test_setup.postgres_uri)
