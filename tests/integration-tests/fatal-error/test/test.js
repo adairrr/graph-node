@@ -7,8 +7,9 @@ const Contract = artifacts.require("./Contract.sol");
 
 const srcDir = path.join(__dirname, "..");
 
+const indexPort = process.env.GRAPH_NODE_INDEX_PORT || 18030;
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://localhost:18030/graphql",
+  uri: `http://localhost:${indexPort}/graphql`,
 });
 
 const exec = (cmd) => {

@@ -7,11 +7,14 @@ const Contract = artifacts.require("./Contract.sol");
 
 const srcDir = path.join(__dirname, "..");
 
+const httpPort = process.env.GRAPH_NODE_HTTP_PORT || 18000;
+const indexPort = process.env.GRAPH_NODE_INDEX_PORT || 18030;
+
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://localhost:18030/graphql",
+  uri: `http://localhost:${indexPort}/graphql`,
 });
 const fetchSubgraph = createApolloFetch({
-  uri: "http://localhost:18000/subgraphs/name/test/value-roundtrip",
+  uri: `http://localhost:${httpPort}/subgraphs/name/test/value-roundtrip`,
 });
 
 const exec = (cmd) => {
