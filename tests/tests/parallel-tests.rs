@@ -707,7 +707,6 @@ mod integration_testing {
     async fn run_graph_node(test_setup: &IntegrationTestSetup) -> Child {
         use std::process::Stdio;
         Command::new(&*test_setup.graph_node_bin)
-            .env("RUST_LOG", "debug")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // postgres
