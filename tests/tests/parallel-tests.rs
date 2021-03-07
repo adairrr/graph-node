@@ -132,7 +132,6 @@ mod docker {
         }
 
         pub async fn stop(&self) -> Result<(), DockerError> {
-            println!("Stopping service container for: {}", self.service.name());
             stop_and_remove(&self.client, &self.service.name()).await
         }
 
@@ -255,11 +254,9 @@ mod docker {
 
 mod helpers {
     use super::docker::MappedPorts;
-    use std::collections::HashSet;
     use std::ffi::OsStr;
-    use std::fs;
     use std::io::{self, BufRead};
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::sync::atomic::{AtomicU16, Ordering};
 
     /// A counter for uniquely naming Ganache containers
@@ -273,27 +270,24 @@ mod helpers {
     const GANACHE_DEFAULT_PORT: u16 = 8545;
     const IPFS_DEFAULT_PORT: u16 = 5001;
 
-    /// Recursivelly find directories that contains a `subgraph.yaml` file.
-    pub fn discover_test_directories(dir: &Path, max_depth: u8) -> io::Result<HashSet<PathBuf>> {
-        let mut found_directories: HashSet<PathBuf> = HashSet::new();
-        if dir.is_dir() {
-            for entry in fs::read_dir(dir)? {
-                let path = entry?.path();
-                if path.is_dir() && max_depth > 0 {
-                    let new_depth = max_depth - 1;
-                    found_directories.extend(discover_test_directories(&path, new_depth)?)
-                } else if basename(&path) == "subgraph.yaml" {
-                    found_directories.insert(dir.into());
-                    continue;
-                }
-            }
-        }
-        Ok(found_directories)
-    }
+    /// All integration tests subdirectories to run
+    pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
+        // "arweave-and-3box",
+        "big-decimal",
+        "data-source-context",
+        "data-source-revert",
+        "fatal-error",
+        "ganache-reverts",
+        "non-fatal-errors",
+        "overloaded-contract-functions",
+        "remove-then-update",
+        "value-roundtrip",
+    ];
 
     /// Strip parent directories from filenames
-    pub fn basename(path: &Path) -> String {
-        path.file_name()
+    pub fn basename(path: &impl AsRef<Path>) -> String {
+        path.as_ref()
+            .file_name()
             .map(OsStr::to_string_lossy)
             .map(String::from)
             .expect("failed to infer basename for path.")
@@ -412,13 +406,13 @@ mod helpers {
 mod integration_testing {
     use super::docker::{DockerTestClient, MappedPorts, TestContainerService};
     use super::helpers::{
-        basename, discover_test_directories, get_unique_ganache_counter,
-        get_unique_postgres_counter, make_ganache_uri, make_ipfs_uri, make_postgres_uri,
-        pretty_output, GraphNodePorts,
+        basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
+        make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts,
+        INTEGRATION_TESTS_DIRECTORIES,
     };
     use futures::{stream::futures_unordered::FuturesUnordered, StreamExt};
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use tokio::io::AsyncReadExt;
     use tokio::process::{Child, Command};
@@ -516,16 +510,14 @@ mod integration_testing {
         let current_working_directory =
             std::env::current_dir().expect("failed to identify working directory");
         let integration_tests_root_directory = current_working_directory.join("integration-tests");
-        let integration_tests_directories =
-            discover_test_directories(&integration_tests_root_directory, 1)
-                .expect("failed to discover integration test directories");
+
+        let test_directories = INTEGRATION_TESTS_DIRECTORIES
+            .iter()
+            .map(|ref p| integration_tests_root_directory.join(PathBuf::from(p)))
+            .collect::<Vec<PathBuf>>();
 
         // Show discovered tests
-        println!(
-            "Found {} integration test directories:",
-            integration_tests_directories.len()
-        );
-        for dir in &integration_tests_directories {
+        for dir in &test_directories {
             println!("  - {}", basename(dir));
         }
 
@@ -564,13 +556,16 @@ mod integration_testing {
                 .expect("failed to infer `graph-node` program location. (Was it built already?)"),
         );
 
+        // run `yarn` command to build workspace
+        run_yarn_command(&integration_tests_root_directory).await;
+
         // run tests
         let mut test_results = Vec::new();
         let mut exit_code: i32 = 0;
         let mut tests_futures = FuturesUnordered::new();
-        for dir in integration_tests_directories.into_iter() {
+        for dir in test_directories {
             tests_futures.push(tokio::spawn(run_integration_test(
-                dir,
+                dir.clone(),
                 postgres.clone(),
                 postgres_ports.clone(),
                 ipfs_ports.clone(),
@@ -686,7 +681,15 @@ mod integration_testing {
         let output = Command::new("yarn")
             .arg("test")
             .env("GANACHE_TEST_PORT", test_setup.ganache_port.to_string())
-            .env("GRAPH_NODE_URI", test_setup.graph_node_admin_uri())
+            .env("GRAPH_NODE_ADMIN_URI", test_setup.graph_node_admin_uri())
+            .env(
+                "GRAPH_NODE_HTTP_PORT",
+                test_setup.graph_node_ports.http.to_string(),
+            )
+            .env(
+                "GRAPH_NODE_INDEX_PORT",
+                test_setup.graph_node_ports.index.to_string(),
+            )
             .env("IPFS_URI", &test_setup.ipfs_uri)
             .current_dir(&test_setup.test_directory)
             .output()
@@ -760,5 +763,23 @@ mod integration_testing {
             .await
             .expect("failed to read");
         pretty_output(&buffer, prefix)
+    }
+
+    /// run yarn to build everything
+    async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
+        println!("Running `yarn` command in itegration test root directory.");
+        let output = Command::new("yarn")
+            .current_dir(base_directory)
+            .output()
+            .await
+            .expect("failed to run yarn command");
+
+        if output.status.success() {
+            return;
+        }
+        println!("Yarn command failed.");
+        println!("{}", pretty_output(&output.stdout, "[yarn:stdout]"));
+        println!("{}", pretty_output(&output.stderr, "[yarn:stderr]"));
+        panic!("Yarn command failed.")
     }
 }
