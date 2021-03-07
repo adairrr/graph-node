@@ -440,8 +440,8 @@ mod integration_testing {
             basename(&self.test_directory)
         }
 
-        fn graph_node_uri(&self) -> String {
-            let ws_port = self.graph_node_ports.ws;
+        fn graph_node_admin_uri(&self) -> String {
+            let ws_port = self.graph_node_ports.admin;
             format!("http://localhost:{}/", ws_port)
         }
     }
@@ -686,7 +686,7 @@ mod integration_testing {
         let output = Command::new("yarn")
             .arg("test")
             .env("GANACHE_TEST_PORT", test_setup.ganache_port.to_string())
-            .env("GRAPH_NODE_URI", test_setup.graph_node_uri())
+            .env("GRAPH_NODE_URI", test_setup.graph_node_admin_uri())
             .env("IPFS_URI", &test_setup.ipfs_uri)
             .current_dir(&test_setup.test_directory)
             .output()
