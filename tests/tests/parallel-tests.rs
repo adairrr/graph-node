@@ -387,7 +387,7 @@ mod helpers {
             .0
             .get(&IPFS_DEFAULT_PORT)
             .expect("failed to fetch IPFS port from mapped ports");
-        format!("{host}:{port}", host = "localhost", port = port)
+        format!("http://{host}:{port}", host = "localhost", port = port)
     }
 
     // Build a Ganache connection string. Returns the port number and the URI.
