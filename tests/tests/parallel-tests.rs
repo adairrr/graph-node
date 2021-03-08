@@ -307,20 +307,6 @@ mod helpers {
     const GANACHE_DEFAULT_PORT: u16 = 8545;
     const IPFS_DEFAULT_PORT: u16 = 5001;
 
-    /// All integration tests subdirectories to run
-    pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
-        // "arweave-and-3box",
-        "big-decimal",
-        "data-source-context",
-        "data-source-revert",
-        "fatal-error",
-        "ganache-reverts",
-        "non-fatal-errors",
-        "overloaded-contract-functions",
-        "remove-then-update",
-        "value-roundtrip",
-    ];
-
     /// Strip parent directories from filenames
     pub fn basename(path: &impl AsRef<Path>) -> String {
         path.as_ref()
@@ -445,7 +431,6 @@ mod integration_testing {
     use super::helpers::{
         basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
         make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts,
-        INTEGRATION_TESTS_DIRECTORIES,
     };
     use futures::{stream::futures_unordered::FuturesUnordered, StreamExt};
     use std::fs;
@@ -453,6 +438,20 @@ mod integration_testing {
     use std::sync::Arc;
     use tokio::io::AsyncReadExt;
     use tokio::process::{Child, Command};
+
+    /// All integration tests subdirectories to run
+    pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
+        // "arweave-and-3box",
+        "big-decimal",
+        "data-source-context",
+        "data-source-revert",
+        "fatal-error",
+        "ganache-reverts",
+        "non-fatal-errors",
+        "overloaded-contract-functions",
+        "remove-then-update",
+        "value-roundtrip",
+    ];
 
     /// Contains all information a test command needs
     #[derive(Debug)]
