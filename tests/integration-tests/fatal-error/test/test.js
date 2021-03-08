@@ -22,7 +22,7 @@ const exec = (cmd) => {
 
 const waitForSubgraphToFailWithError = async (blockNumber) =>
   new Promise((resolve, reject) => {
-    let deadline = Date.now() + 5 * 10000;
+    let deadline = Date.now() + 60 * 1000;
 
     const checkSubgraphFailed = async () => {
       try {
