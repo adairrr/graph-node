@@ -750,9 +750,8 @@ mod integration_testing {
     async fn run_graph_node(test_setup: &IntegrationTestSetup) -> Child {
         use std::process::Stdio;
 
-        let command_path = test_setup.graph_node_bin.as_os_str();
-
-        let mut command = Command::new(command_path);
+        let mut command = Command::new(test_setup.graph_node_bin.as_os_str());
+        command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // postgres
@@ -787,8 +786,8 @@ mod integration_testing {
             command.env(
                 "FAILPOINTS",
                 "test_reorg=return(2);error_on_duplicate_ds=return",
-            )
-        };
+            );
+        }
 
         command
             .spawn()
