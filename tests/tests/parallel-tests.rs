@@ -517,6 +517,7 @@ mod integration_testing {
             .collect::<Vec<PathBuf>>();
 
         // Show discovered tests
+        println!("Found {} integration tests:", test_directories.len());
         for dir in &test_directories {
             println!("  - {}", basename(dir));
         }
@@ -767,7 +768,7 @@ mod integration_testing {
 
     /// run yarn to build everything
     async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
-        println!("Running `yarn` command in itegration test root directory.");
+        println!("Running `yarn` command in itegration tests root directory.");
         let output = Command::new("yarn")
             .current_dir(base_directory)
             .output()
