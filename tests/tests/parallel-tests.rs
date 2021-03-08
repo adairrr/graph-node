@@ -1,15 +1,41 @@
 mod docker {
     use super::helpers::{contains_subslice, postgres_test_database_name};
+    use bollard::image::CreateImageOptions;
     use bollard::models::HostConfig;
     use bollard::{container, Docker};
     use std::collections::HashMap;
     use tokio::time::{sleep, Duration};
     use tokio_stream::StreamExt;
 
-    const POSTGRES_IMAGE: &'static str = "postgres";
+    const POSTGRES_IMAGE: &'static str = "postgres:latest";
     const IPFS_IMAGE: &'static str = "ipfs/go-ipfs:v0.4.23";
-    const GANACHE_IMAGE: &'static str = "trufflesuite/ganache-cli";
+    const GANACHE_IMAGE: &'static str = "trufflesuite/ganache-cli:latest";
     type DockerError = bollard::errors::Error;
+
+    pub async fn pull_images() {
+        use tokio_stream::StreamMap;
+
+        let client =
+            Docker::connect_with_local_defaults().expect("Failed to connect to docker daemon.");
+
+        let images = [POSTGRES_IMAGE, IPFS_IMAGE, GANACHE_IMAGE];
+        let mut map = StreamMap::new();
+
+        for image_name in &images {
+            let options = Some(CreateImageOptions {
+                from_image: *image_name,
+                ..Default::default()
+            });
+            let stream = client.create_image(options, None, None);
+            map.insert(*image_name, stream);
+        }
+
+        while let Some(message) = map.next().await {
+            if let (key, Err(msg)) = message {
+                panic!("Error when pulling docker image for {}: {}", key, msg)
+            }
+        }
+    }
 
     pub async fn stop_and_remove(client: &Docker, service_name: &str) -> Result<(), DockerError> {
         client.kill_container::<&str>(service_name, None).await?;
@@ -115,20 +141,31 @@ mod docker {
             let client =
                 Docker::connect_with_local_defaults().expect("Failed to connect to docker daemon.");
 
+            let docker_test_client = Self { service, client };
+
             // try to remove the container if it already exists
-            let _ = stop_and_remove(&client, &service.name()).await;
+            let _ = stop_and_remove(
+                &docker_test_client.client,
+                &docker_test_client.service.name(),
+            )
+            .await;
 
             // create docker container
-            client
-                .create_container(Some(service.options()), service.config())
+            docker_test_client
+                .client
+                .create_container(
+                    Some(docker_test_client.service.options()),
+                    docker_test_client.service.config(),
+                )
                 .await?;
 
             // start docker container
-            client
-                .start_container::<&'static str>(&service.name(), None)
+            docker_test_client
+                .client
+                .start_container::<&'static str>(&docker_test_client.service.name(), None)
                 .await?;
 
-            Ok(Self { service, client })
+            Ok(docker_test_client)
         }
 
         pub async fn stop(&self) -> Result<(), DockerError> {
@@ -404,7 +441,7 @@ mod helpers {
 }
 
 mod integration_testing {
-    use super::docker::{DockerTestClient, MappedPorts, TestContainerService};
+    use super::docker::{pull_images, DockerTestClient, MappedPorts, TestContainerService};
     use super::helpers::{
         basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
         make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts,
@@ -511,6 +548,9 @@ mod integration_testing {
             std::env::current_dir().expect("failed to identify working directory");
         let integration_tests_root_directory = current_working_directory.join("integration-tests");
 
+        // pull required docker images
+        pull_images().await;
+
         let test_directories = INTEGRATION_TESTS_DIRECTORIES
             .iter()
             .map(|ref p| integration_tests_root_directory.join(PathBuf::from(p)))
@@ -521,6 +561,9 @@ mod integration_testing {
         for dir in &test_directories {
             println!("  - {}", basename(dir));
         }
+
+        // run `yarn` command to build workspace
+        run_yarn_command(&integration_tests_root_directory).await;
 
         // start docker containers for Postgres and IPFS and wait for them to be ready
         let postgres = Arc::new(
@@ -556,9 +599,6 @@ mod integration_testing {
             fs::canonicalize("../target/debug/graph-node")
                 .expect("failed to infer `graph-node` program location. (Was it built already?)"),
         );
-
-        // run `yarn` command to build workspace
-        run_yarn_command(&integration_tests_root_directory).await;
 
         // run tests
         let mut test_results = Vec::new();
