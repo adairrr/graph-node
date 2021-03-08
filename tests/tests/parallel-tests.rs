@@ -749,7 +749,10 @@ mod integration_testing {
     }
     async fn run_graph_node(test_setup: &IntegrationTestSetup) -> Child {
         use std::process::Stdio;
-        Command::new(&*test_setup.graph_node_bin)
+
+        let command_path = test_setup.graph_node_bin.as_os_str();
+
+        let mut command = Command::new(command_path);
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             // postgres
@@ -775,7 +778,19 @@ mod integration_testing {
             .arg(test_setup.graph_node_ports.admin.to_string())
             // metrics  port
             .arg("--metrics-port")
-            .arg(test_setup.graph_node_ports.metrics.to_string())
+            .arg(test_setup.graph_node_ports.metrics.to_string());
+
+        // add test specific environment variables
+	// TODO: it might be interesting to refactor this conditional into a new datatype that ties
+	// the test name and its environment variables together.
+        if test_setup.test_name().as_str() == "data-source-revert" {
+            command.env(
+                "FAILPOINTS",
+                "test_reorg=return(2);error_on_duplicate_ds=return",
+            )
+        };
+
+        command
             .spawn()
             .expect("failed to start graph-node command.")
     }
