@@ -780,8 +780,8 @@ mod integration_testing {
             .arg(test_setup.graph_node_ports.metrics.to_string());
 
         // add test specific environment variables
-	// TODO: it might be interesting to refactor this conditional into a new datatype that ties
-	// the test name and its environment variables together.
+        // TODO: it might be interesting to refactor this conditional into a new datatype that ties
+        // the test name and its environment variables together.
         if test_setup.test_name().as_str() == "data-source-revert" {
             command.env(
                 "FAILPOINTS",
